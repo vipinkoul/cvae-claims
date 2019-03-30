@@ -1,12 +1,14 @@
-record_year_cutoff <- 2005
+
 timesteps <- 11
 
-simulated_cashflows <- readr::read_delim("Simulated.Cashflow.txt", delim = ";", col_types = "dccdddcddddddddddddddddddddddddd")
+simulated_cashflows <- readr::read_delim("external_data/Simulated.Cashflow.txt", delim = ";", col_types = "dccdddcddddddddddddddddddddddddd")
 
 #' Take a subset
 set.seed(99)
 simulated_cashflows <- simulated_cashflows %>%
-  sample_n(10000)
+  sample_n(1000)
+
+record_year_cutoff <- min(simulated_cashflows$AY) + 11
 
 #' Initial feature engineering
 simulated_cashflows <- simulated_cashflows %>%

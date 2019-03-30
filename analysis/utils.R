@@ -74,7 +74,6 @@ convert_to_tensors <- function(x) {
 
 compute_mack_ultimate <- function(df, claim_ids) {
   triangle_data <- df %>%
-    inner_join(claim_ids, by = c("ClNr")) %>%
     group_by(AY, year) %>%
     summarize(paid = sum(Pay)) %>%
     mutate(cumulative_paid = cumsum(paid))
@@ -98,9 +97,21 @@ compute_mack_ultimate <- function(df, claim_ids) {
         rev()
     )
   
-  ldfs %>% 
-    mutate(ultimate = year_sum * lead(ldf, default = 1)) %>%
-    summarize(total_ultimate = sum(ultimate))
+  df %>%
+    inner_join(claim_ids, by = c("ClNr")) %>%
+    group_by(AY, year) %>%
+    summarize(paid = sum(Pay)) %>%
+    mutate(cumulative_paid = cumsum(paid)) %>%
+    group_by(AY) %>%
+    summarize(latest_year = max(year), latest_paid = last(cumulative_paid)) %>%
+    left_join(
+      ldfs %>%
+                mutate(ldf = lead(ldf)), 
+      by = c(latest_year = "year")
+    ) %>%
+    mutate(ultimate = latest_paid * ldf) %>%
+    summarize(total_ultimate = sum(ultimate)) %>%
+    pull(total_ultimate)
 }
 
 prep_keras_data <- function(x, mask = -99) {
