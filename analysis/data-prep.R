@@ -1,14 +1,7 @@
-
 timesteps <- 11
 
 simulated_cashflows <- readr::read_delim("external_data/Simulated.Cashflow.txt", delim = ";", col_types = "dccdddcddddddddddddddddddddddddd")
-
-#' Take a subset
-set.seed(99)
-simulated_cashflows <- simulated_cashflows %>%
-  sample_n(1000)
-
-record_year_cutoff <- min(simulated_cashflows$AY) + 11
+record_year_cutoff <- min(simulated_cashflows$AY) + timesteps
 
 #' Initial feature engineering
 simulated_cashflows <- simulated_cashflows %>%
@@ -25,6 +18,8 @@ simulated_cashflows <- simulated_cashflows %>%
     #  it must be after the claim was reported
     record_year = pmax(report_year, calendar_year)
   ) %>%
+  # Keep only claims reported as of cutoff
+  filter(report_year <= !!record_year_cutoff) %>%
   spread(variable, value) %>%
   mutate(
     paid_loss = Pay,
@@ -40,21 +35,3 @@ simulated_cashflows <- simulated_cashflows %>%
     paid_loss_original = paid_loss,
     cumulative_paid_loss_original = cumulative_paid_loss
   )
-
-training_data <- simulated_cashflows %>%
-  filter(record_year <= record_year_cutoff)
-claim_ids <- training_data %>%
-  distinct(ClNr)
-
-rec <- recipe(training_data, ~ .) %>%
-  step_integer(lob, claim_code, injured_part, zero_based = TRUE) %>%
-  step_center(age) %>%
-  step_scale(age, paid_loss) %>%
-  prep(training_data)
-
-#' Capture mean/sd for paids so we can recover after prediction
-mean_pay <- 0
-sd_pay <- rec$steps[[3]]$sds[["paid_loss"]]
-
-training_data <- training_data %>% 
-  mutate_sequences(rec, timesteps)

@@ -1,3 +1,4 @@
+tidied <- results$forecasts[[1]]
 claim_number <- tidied %>%
   distinct(ClNr) %>%
   sample_n(1) %>%

@@ -202,54 +202,6 @@ mutate_scoring_tensors <- function(data) {
   )
 }
 
-compute_forecasts <- function(data, num_draws, decoder, num_categories = 10L, num_latent_distributions = 20L) {
-  scoring_tensors <- data$scoring_tensor %>%
-    map(function(tensors) {
-      map(tensors, ~k_repeat_elements(.x, num_draws, 1))
-    }) %>%
-    purrr::transpose() %>%
-    purrr::map(k_concatenate, axis = 1)
-  
-  random_draws <- tfprobability::tfd_one_hot_categorical(
-    logits = array(
-      rep(1, nrow(data) * num_draws * num_latent_distributions * num_categories), 
-      dim = c(nrow(data) * num_draws, num_latent_distributions, num_categories)
-    ),
-    dtype = k_floatx()
-  ) %>%
-    tfd_sample()
-  
-  predictions <- predict(decoder, c(random_draws, scoring_tensors))
-  
-  predictions <- seq_len(nrow(data)) %>% 
-    map(~ (.x - 1) * num_draws + 1:num_draws) %>%
-    map(~ predictions[.x,,])
-  
-  bind_cols(
-    data,
-    tibble(forecasts = predictions)
-  )
-}
-
-tidy_forecasts <- function(data, mean_paid_loss, sd_paid_loss) {
-  data %>%
-    group_by(ClNr) %>%
-    group_map(function(df, ...) {
-      
-      dev_year <- df$year + 1:11
-      
-      num_draws <- dim(data$forecasts[[1]])[[1]]
-      
-      df$forecasts[[1]] %>%
-        apply(1, function(x) tibble(development_year = dev_year, paid_loss = x, type = "predicted")) %>%
-        set_names(paste0("sample_", seq_len(num_draws))) %>%
-        bind_rows(.id = "sample") %>%
-        mutate(paid_loss = paid_loss * !!sd_paid_loss + !!mean_paid_loss) %>%
-        filter(development_year <= 11)
-    }) %>%
-    ungroup()
-}
-
 plot_forecasts <- function(forecasts, actual) {
   
   # get first dev year in forecast
@@ -277,4 +229,82 @@ plot_forecasts <- function(forecasts, actual) {
     theme_bw() + 
     scale_color_brewer(palette="Dark2") +
     ylim(0, NA)
+}
+
+prep_datasets <- function(simulated_cashflows, n, timesteps = 11, record_year_cutoff = 2005) {
+  claim_ids <- simulated_cashflows %>%
+    distinct(ClNr) %>%
+    sample_n(!!n)
+  
+  cashflow_history <- simulated_cashflows %>%
+    inner_join(claim_ids, by = "ClNr")
+  
+  training_data <- cashflow_history %>%
+    filter(record_year <= !!record_year_cutoff)
+  
+  rec <- recipe(training_data, ~ .) %>%
+    step_integer(lob, claim_code, injured_part, zero_based = TRUE) %>%
+    step_center(age) %>%
+    step_scale(age, paid_loss) %>%
+    prep(training_data)
+  
+  #' Capture mean/sd for paids so we can recover after prediction
+  mean_paid <- 0
+  sd_paid <- rec$steps[[3]]$sds[["paid_loss"]]
+  
+  training_data <- training_data %>% 
+    mutate_sequences(rec, timesteps)
+  
+  list(
+    training_data = training_data,
+    cashflow_history = cashflow_history,
+    mean_paid = mean_paid,
+    sd_paid = sd_paid
+  )
+}
+
+compute_tidy_forecasts <- function(data, decoder_model, num_draws, mean_paid, sd_paid, num_categories = 10L, num_latent_distributions = 10) {
+  records_to_score <- data %>% 
+    mutate(
+      paid_loss_lags = map2(paid_loss_lags, paid_loss, ~ c(.x[-1], .y)),
+      claim_open_indicator_lags = map2(claim_open_indicator_lags, claim_open_indicator, ~c(.x[-1], .y))
+    ) %>%
+    slice(rep(1, num_draws))
+  
+  draws <- tfprobability::tfd_one_hot_categorical(
+    logits = array(
+      rep(1, num_draws * num_categories * num_latent_distributions), 
+      dim = c(num_draws, num_categories, num_latent_distributions)
+    ),
+    dtype = k_floatx()
+  ) %>%
+    tfd_sample() %>% 
+    as.array()
+  
+  draws <- rray::rray_tile(draws, nrow(data))
+  
+  scoring_data_keras <- records_to_score %>%
+    prep_keras_data()
+  
+  scoring_data_keras <- c(list(draw_input_ = draws), scoring_data_keras$x)  
+  
+  preds <- predict(decoder_model, scoring_data_keras, batch_size = 2048)
+  
+  dev_years <- records_to_score %>%
+    distinct(ClNr, year) %>%
+    transmute(
+      development_year = list(year + 1:11)
+    ) %>%
+    slice(rep(1, num_draws)) %>%
+    unnest(.id = "sample") %>%
+    mutate(sample = paste0("sample_", sample),
+           type = "predicted")
+  
+  preds[,,1] %>%
+    as_tibble(.name_repair = ~ paste0("V", 1:11)) %>%
+    gather() %>%
+    bind_cols(dev_years) %>%
+    mutate(paid_loss = value * sd_paid + mean_paid) %>%
+    filter(development_year <= 11) %>%
+    select(-key)
 }
