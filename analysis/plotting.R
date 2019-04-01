@@ -1,5 +1,9 @@
-claim_number <- tidied %>%
-  distinct(ClNr) %>%
+claim_ids_for_comparison <- tidied %>%
+  distinct(ClNr)
+
+claim_numbers <- tidied %>% distinct(ClNr)
+
+claim_number <- claim_numbers %>%
   sample_n(1) %>%
   pull(ClNr)
 
@@ -15,3 +19,4 @@ actual_series <- simulated_cashflows %>%
   )
 
 plot_forecasts(forecast_df, actual_series)
+

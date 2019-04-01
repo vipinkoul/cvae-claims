@@ -7,5 +7,6 @@ tfe_enable_eager_execution(device_policy = "silent")
 library(tfprobability)
 library(tidyverse)
 library(recipes)
+library(tfdatasets)
 
 source("analysis/utils.R")
