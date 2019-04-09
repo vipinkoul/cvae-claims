@@ -25,7 +25,7 @@ results <- purrr::map_df(1:10, function(i) {
   cvae$cvae %>%
     compile(
       loss = vae_loss,
-      optimizer = tf$keras$optimizers$Adam(1e-2)
+      optimizer = tf$keras$optimizers$Adam(1e-3)
     )
   
   history <- cvae$cvae %>%
@@ -33,12 +33,15 @@ results <- purrr::map_df(1:10, function(i) {
       x = train_data_keras$x,
       y = train_data_keras$y,
       batch_size = 2048,
-      epochs = 100,
+      epochs = 50,
       view_metrics = FALSE,
       verbose = 1
     )
   
-  tidied <- dataset$training_data %>%
+  scoring_data <- bind_rows(dataset$training_data, dataset$dev_year_zero_records) %>%
+    arrange(ClNr, year)
+  
+  tidied <- scoring_data %>% 
     group_by(ClNr) %>%
     # get the latest valuation of claim
     slice(n()) %>%
@@ -56,7 +59,7 @@ results <- purrr::map_df(1:10, function(i) {
     summarize(ultimate = sum(Pay)) %>%
     pull(ultimate)
     
-  mack_ultimate <- compute_mack_ultimate(dataset$training_data, claim_ids_for_comparison)
+  mack_ultimate <- compute_mack_ultimate(scoring_data, claim_ids_for_comparison)
   
   predicted_future_paid <- tidied %>%
     group_by(ClNr, sample) %>%
@@ -64,14 +67,16 @@ results <- purrr::map_df(1:10, function(i) {
     group_by(ClNr) %>%
     summarize(mean_predicted_future_paid = mean(predicted_future_paid))
   
-  predicted_df <- dataset$training_data %>%
+  predicted_df <- scoring_data %>% 
     group_by(ClNr) %>%
     summarize(paid = sum(Pay)) %>%
     right_join(predicted_future_paid, by = "ClNr") %>%
     mutate(ultimate = paid + ifelse(is.na(mean_predicted_future_paid), 0, mean_predicted_future_paid))
   
   nn_ultimate <- sum(predicted_df$ultimate)
-  nn_ultimate
+  
+  mack_ultimate / actual_ultimate - 1
+  nn_ultimate / actual_ultimate - 1
   
   list(
     forecasts = list(tidied),
