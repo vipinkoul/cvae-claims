@@ -23,6 +23,7 @@ make_series <- function(v, start_offset, end_offset, na_pad = -99) {
   )
 }
 
+# TODO: unused, consider deleting
 masked_mse <- function(mask_value) {
   function(y_true, y_pred) {
     keep_value <- k_cast(k_not_equal(y_true, mask_value), k_floatx())
@@ -36,6 +37,7 @@ masked_mse <- function(mask_value) {
   }
 }
 
+# TODO: unused, consider deleting
 masked_future_paid_error <- function(mask_value) {
   function(y_true, y_pred) {
     keep_value <- k_cast(k_not_equal(y_true, mask_value), k_floatx())
@@ -47,6 +49,7 @@ masked_future_paid_error <- function(mask_value) {
     squared_error_future_paid
   }
 }
+
 
 masked_mse2 <- function(mask_value) {
   function(y_true, y_pred) {
@@ -228,7 +231,7 @@ plot_forecasts <- function(forecasts, actual) {
     geom_line(aes(color = type), data = mutate(actual, cumulative_paid = cumsum(paid_loss), type = "actual"), alpha = 0.3) +
     theme_bw() + 
     scale_color_brewer(palette="Dark2") +
-    ylim(0, NA)
+    ylim(-10000, NA)
 }
 
 prep_datasets <- function(simulated_cashflows, n, timesteps = 11, record_year_cutoff = 2005) {
