@@ -309,8 +309,8 @@ compute_tidy_forecasts <- function(data, decoder_model, num_draws, mean_paid, sd
       development_year = list(year + 1:11)
     ) %>%
     slice(rep(1, num_draws)) %>%
-    unnest(.id = "sample") %>%
-    mutate(sample = paste0("sample_", sample),
+    unnest() %>%
+    mutate(sample = paste0("sample_", rep(1:num_draws, 11)),
            type = "predicted")
   
   preds[,,1] %>%
