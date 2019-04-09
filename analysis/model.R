@@ -76,31 +76,32 @@ keras_model_cvae <- function(name = NULL, num_categories = 10L, num_latent_distr
     self$z_cond <- layer_concatenate(list(self$cond, self$draw_input_flattened), axis = 1)
     
     # Initialize layers used for decoding
-    self$dense_relu_1 <- layer_dense(units = 128, activation = "relu")
     self$gru_1 <- layer_gru(units = 128, return_sequences = TRUE)
-    self$dense_2 <- layer_dense(units = 1, activation = "sigmoid")
-    self$relaxed_bernoulli <- layer_distribution_lambda(
-      make_distribution_fn = function(x) tfd_relaxed_bernoulli(temperature = 1e-6, probs = x)
+
+    self$prob_output_layer <- layer_distribution_lambda(
+      make_distribution_fn = function(x) {
+        mix <- tfd_mixture(
+          tfd_categorical(logits = x[,,1:3]),
+          components = list(
+            tfd_deterministic(k_zeros_like(x[,,1])),
+            tfd_normal(loc = x[,,4], scale = k_softplus(x[,,5])),
+            tfd_normal(loc = -x[,,6], scale = k_softplus(x[,,7]))
+          )
+        )
+        tfd_independent(mix, reinterpreted_batch_ndims = NULL)
+      }
     )
-    self$dense_3 <- layer_dense(units = 1)
-    self$prelu_1 <- layer_activation_parametric_relu()
-    self$dense_6 <- layer_dense(units = 1)
+    
+    self$dense_7 <- layer_dense(units = 7, activation = "relu")
     
     # Decoder
     self$sequence <- self$z_cond %>%
       layer_repeat_vector(n = 11) %>%
-      self$gru_1()
-    
-    self$claim_open_sequence <- self$sequence %>%
-      self$dense_2() %>%
-      self$relaxed_bernoulli() %>%
-      layer_lambda(function(x) tfd_sample(x))
-    
+      self$gru_1() %>%
+      self$dense_7()
     
     self$predicted_incremental <- self$sequence %>%
-      self$dense_3() %>%
-      self$prelu_1() %>% 
-      layer_lambda(function(x) k_prod(list(x, self$claim_open_sequence), axis = 1)) #%>%
+      self$prob_output_layer()
     
     self$cvae <- keras_model(
       inputs = c(self$paid_loss_lags, self$claim_open_indicator_lags, self$lob, self$claim_code, self$age, self$injured_part, self$paid_loss_target),
@@ -112,23 +113,18 @@ keras_model_cvae <- function(name = NULL, num_categories = 10L, num_latent_distr
     self$test_draw_input_flattened <- self$test_draw_input %>%
       layer_reshape(c(self$num_categories * self$num_latent_distributions))
     self$test_z_cond <- layer_concatenate(list(self$cond, self$test_draw_input_flattened), axis = 1)
-    
+
     # Test decoder
     self$test_sequence <- self$test_z_cond %>%
-      layer_repeat_vector(n = 11) %>%
-      self$gru_1()
-    
-    self$test_claim_open_sequence <- self$test_sequence %>%
-      self$dense_2() %>%
-      self$relaxed_bernoulli() %>%
-      layer_lambda(function(x) tfd_sample(x))
-    
-    
+        layer_repeat_vector(n = 11) %>%
+        self$gru_1() %>%
+        self$dense_7()
+
     self$test_predicted_incremental <- self$test_sequence %>%
-      self$dense_3() %>%
-      self$prelu_1() %>% 
-      layer_lambda(function(x) k_prod(list(x, self$test_claim_open_sequence), axis = 1))
-    
+      self$prob_output_layer() %>% 
+      layer_lambda(function(x) tfd_sample(x)) %>% 
+      layer_reshape(c(11, 1))
+
     self$predictor <- keras_model(
       c(self$test_draw_input, self$paid_loss_lags, self$claim_open_indicator_lags, self$lob, self$claim_code, self$age, self$injured_part),
       self$test_predicted_incremental
