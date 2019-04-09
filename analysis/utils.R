@@ -161,14 +161,14 @@ mutate_sequences <- function(data, recipe, timesteps, training = TRUE) {
     group_by(ClNr) %>%
     mutate(
       claim_open_indicator_lags = make_series(claim_open_indicator, -timesteps, -1),
-      paid_loss_lags = make_series(paid_loss, -timesteps, -1)#,
+      paid_loss_lags = make_series(paid_loss, -timesteps, -1)
     ) 
   
   if (training) {
     output <- output %>%
       mutate(
         claim_open_indicator_target = make_series(claim_open_indicator, 0, timesteps - 1),
-        paid_loss_target = make_series(paid_loss, 0, timesteps - 1)#,
+        paid_loss_target = make_series(paid_loss, 0, timesteps - 1)
       )
   }
   
@@ -260,8 +260,15 @@ prep_datasets <- function(simulated_cashflows, n, timesteps = 11, record_year_cu
   training_data <- training_data %>% 
     mutate_sequences(rec, timesteps)
   
+  dev_year_zero_records <- training_data %>% 
+    filter(year == 0)
+  
+  training_data <- training_data %>% 
+    filter(year > 0)
+  
   list(
     training_data = training_data,
+    dev_year_zero_records = dev_year_zero_records,
     cashflow_history = cashflow_history,
     mean_paid = mean_paid,
     sd_paid = sd_paid
@@ -272,7 +279,8 @@ compute_tidy_forecasts <- function(data, decoder_model, num_draws, mean_paid, sd
   records_to_score <- data %>% 
     mutate(
       paid_loss_lags = map2(paid_loss_lags, paid_loss, ~ c(.x[-1], .y)),
-      claim_open_indicator_lags = map2(claim_open_indicator_lags, claim_open_indicator, ~c(.x[-1], .y))
+      claim_open_indicator_lags = map2(claim_open_indicator_lags, claim_open_indicator, ~c(.x[-1], .y)),
+      scaled_dev_year = scaled_dev_year + 1/11
     ) %>%
     slice(rep(1, num_draws))
   
