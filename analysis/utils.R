@@ -138,6 +138,7 @@ prep_keras_data <- function(x, mask = -99) {
         t() %>%
         reticulate::array_reshape(c(nrow(.), ncol(.), 1)),
       claim_open_indicator_lags_ = claim_open_indicator_lags,
+      scaled_dev_year_ = x$scaled_dev_year,
       lob_ = x$lob,
       claim_code_ = x$claim_code,
       age_ = x$age,
@@ -249,6 +250,7 @@ prep_datasets <- function(simulated_cashflows, n, timesteps = 11, record_year_cu
     step_integer(lob, claim_code, injured_part, zero_based = TRUE) %>%
     step_center(age) %>%
     step_scale(age, paid_loss) %>%
+    step_mutate(scaled_dev_year = year / 11) %>% 
     prep(training_data)
   
   #' Capture mean/sd for paids so we can recover after prediction

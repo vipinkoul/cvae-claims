@@ -13,6 +13,7 @@ keras_model_cvae <- function(name = NULL, num_categories = 10L, num_latent_distr
     self$paid_loss_target <- layer_input(shape = c(11, 1), name = "paid_loss_target_")
     self$paid_loss_lags <- layer_input(shape = c(11, 1), name = "paid_loss_lags_")
     self$claim_open_indicator_lags <- layer_input(shape = c(11, 2), name = "claim_open_indicator_lags_")
+    self$scaled_dev_year <- layer_input(shape = c(1), name = "scaled_dev_year_")
     self$lob <- layer_input(shape = c(1), name = "lob_")
     self$claim_code <- layer_input(shape = c(1), name = "claim_code_")
     self$age <- layer_input(shape = 1, name = "age_")
@@ -38,6 +39,7 @@ keras_model_cvae <- function(name = NULL, num_categories = 10L, num_latent_distr
     
     # Concatenate encoded conditions
     self$cond <- layer_concatenate(list(
+      self$scaled_dev_year,
       self$lob_embedding, 
       self$claim_code_embedding, 
       self$injured_part_embedding, 
@@ -104,7 +106,7 @@ keras_model_cvae <- function(name = NULL, num_categories = 10L, num_latent_distr
       self$prob_output_layer()
     
     self$cvae <- keras_model(
-      inputs = c(self$paid_loss_lags, self$claim_open_indicator_lags, self$lob, self$claim_code, self$age, self$injured_part, self$paid_loss_target),
+      inputs = c(self$paid_loss_lags, self$claim_open_indicator_lags, self$scaled_dev_year, self$lob, self$claim_code, self$age, self$injured_part, self$paid_loss_target),
       outputs = self$predicted_incremental
     )
     
@@ -126,7 +128,7 @@ keras_model_cvae <- function(name = NULL, num_categories = 10L, num_latent_distr
       layer_reshape(c(11, 1))
 
     self$predictor <- keras_model(
-      c(self$test_draw_input, self$paid_loss_lags, self$claim_open_indicator_lags, self$lob, self$claim_code, self$age, self$injured_part),
+      c(self$test_draw_input, self$paid_loss_lags, self$claim_open_indicator_lags, self$scaled_dev_year, self$lob, self$claim_code, self$age, self$injured_part),
       self$test_predicted_incremental
     )
   })
